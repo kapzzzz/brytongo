@@ -108,6 +108,16 @@ func (t BrytonTrack) Export(outFileName string) error {
 	return err
 }
 
+func (t BrytonTrack) getCoordinateIndex(point GeoPoint) uint16 {
+	for i, entry := range t {
+		if entry == point {
+			return uint16(i)
+		}
+	}
+
+	return uint16(0)
+}
+
 func (t BrytonTinfo) Export(outFileName string) error {
 
 	var err error
@@ -185,11 +195,75 @@ func (d *BrytonData) ImportGpx(gpxFileName string) error {
 		return err
 	}
 
+	// smy data
 	d.smy.coordinateCount = int16(gpxData.GetTrackPointsNo())
-	d.smy.totalDst = gpxData.Length3D()
+	d.smy.totalDst = int32(gpxData.Length3D() * 1000.0)
+
+	d.smy.bboxLatNe = adjustGeoCoordinates(gpxData.Bounds().MaxLatitude)
+	d.smy.bboxLonNe = adjustGeoCoordinates(gpxData.Bounds().MaxLongitude)
+	d.smy.bboxLatSw = adjustGeoCoordinates(gpxData.Bounds().MinLatitude)
+	d.smy.bboxLonSw = adjustGeoCoordinates(gpxData.Bounds().MinLongitude)
+
+	// track data
+	if len(gpxData.Tracks) > 0 {
+		if len(gpxData.Tracks[0].Segments) > 0 {
+
+			for _, p := range gpxData.Tracks[0].Segments[0].Points {
+				d.track = append(d.track, GeoPoint{adjustGeoCoordinates(p.Point.GetLatitude()), adjustGeoCoordinates(p.Point.GetLongitude())})
+			}
+		}
+	}
+
+	// tinfo data
+	for _, w := range gpxData.Waypoints {
+		var wpt Waypoint
+		wpt.coordinateIndex = d.track.getCoordinateIndex(GeoPoint{adjustGeoCoordinates(w.Point.GetLatitude()), adjustGeoCoordinates(w.Point.GetLongitude())})
+		wpt.directionCode = convertDirectionCode(strings.ToLower(w.Symbol))
+		// d.tinfo w.Type
+		d.tinfo = append(d.tinfo, wpt)
+	}
+	// gpxData.Waypoints[0]
+	// var wpt Waypoint
+	// wpt.coordinateIndex
+	// wpt.directionCode
+	// wpt.distance
+	// wpt.timeSec
+	// wpt.waypointDescription
+
+	// d.tinfo
 
 	fmt.Println("...finished in ", -startTimestamp.Sub(time.Now()))
 	return err
+}
+
+func adjustGeoCoordinates(geo float64) int32 {
+	return int32(geo * 1000000.0)
+}
+
+func convertDirectionCode(gpxDirCode string) uint8 {
+
+	brytonDirCode := DirectionCodeGoAhead
+
+	switch gpxDirCode {
+	case "tshl":
+		brytonDirCode = DirectionCodeCloseLeft
+	case "left":
+		brytonDirCode = DirectionCodeLeft
+	case "tsll":
+		brytonDirCode = DirectionCodeSlightLeft
+	case "straight":
+		brytonDirCode = DirectionCodeGoAhead
+	case "tslr":
+		brytonDirCode = DirectionCodeSlightRight
+	case "right":
+		brytonDirCode = DirectionCodeRight
+	case "tshr":
+		brytonDirCode = DirectionCodeCloseRight
+	default:
+		fmt.Println("Unsupported direction code: " + gpxDirCode + "! Using GoAhead!")
+	}
+
+	return brytonDirCode
 }
 
 func main() {

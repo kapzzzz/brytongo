@@ -1,4 +1,4 @@
-package main
+package brytongo
 
 import (
 	"bytes"
@@ -17,6 +17,7 @@ type GeoPoint struct {
 	lon int32
 }
 
+// Default value of first byte in .smy file
 const smyInitFlag int16 = 0x01
 
 // BrytonSmy content and layout of .smy bryton file
@@ -63,10 +64,7 @@ type BrytonData struct {
 	tinfo BrytonTinfo
 }
 
-type Bryton interface {
-	Export(outFileName string) error
-}
-
+// Export BrytonSmy structure to .smy file
 func (s *BrytonSmy) Export(outFileName string) error {
 
 	var binaryBuffer bytes.Buffer
@@ -81,6 +79,7 @@ func (s *BrytonSmy) Export(outFileName string) error {
 	return err
 }
 
+// Export BrytonTrack structure to .track file
 func (t BrytonTrack) Export(outFileName string) error {
 
 	var err error
@@ -108,6 +107,8 @@ func (t BrytonTrack) Export(outFileName string) error {
 	return err
 }
 
+// Returns track index of searched geo point.
+// If not found, returns 0
 func (t BrytonTrack) getCoordinateIndex(point GeoPoint) uint16 {
 	for i, entry := range t {
 		if entry == point {
@@ -118,6 +119,7 @@ func (t BrytonTrack) getCoordinateIndex(point GeoPoint) uint16 {
 	return uint16(0)
 }
 
+// Export BrytonTinfo structure to .tinfo file
 func (t BrytonTinfo) Export(outFileName string) error {
 
 	var err error
@@ -150,6 +152,7 @@ func (t BrytonTinfo) Export(outFileName string) error {
 
 }
 
+// Stores byte buffer to file
 func storeToFile(buf bytes.Buffer, outFileName string) error {
 
 	file, err := os.Create(outFileName)
@@ -171,21 +174,25 @@ func storeToFile(buf bytes.Buffer, outFileName string) error {
 	return err
 }
 
-func (data *BrytonData) Export(outFileName string) {
+// Export BrytonData structure to .smy .track and .tinfo files
+func (d *BrytonData) Export(outFileName string) {
 
-	data.smy.Export(outFileName)
-	data.track.Export(outFileName)
-	data.tinfo.Export(outFileName)
+	d.smy.Export(outFileName)
+	d.track.Export(outFileName)
+	d.tinfo.Export(outFileName)
 }
 
+// Strips extension from in filename and adds passed as argument
 func adjustFilename(in string, extension string) string {
 	out := strings.Split(in, ".")
 	return out[0] + extension
 }
 
+// ImportGpx file and parse to BrytonData structure
 func (d *BrytonData) ImportGpx(gpxFileName string) error {
 
 	fmt.Println("Reading... ", gpxFileName)
+
 	startTimestamp := time.Now()
 
 	gpxData, err := gpx.ParseFile(gpxFileName)
@@ -219,27 +226,27 @@ func (d *BrytonData) ImportGpx(gpxFileName string) error {
 		var wpt Waypoint
 		wpt.coordinateIndex = d.track.getCoordinateIndex(GeoPoint{adjustGeoCoordinates(w.Point.GetLatitude()), adjustGeoCoordinates(w.Point.GetLongitude())})
 		wpt.directionCode = convertDirectionCode(strings.ToLower(w.Symbol))
-		// d.tinfo w.Type
+
+		// TODO: should we use these fields?
+		wpt.distance = 0
+		wpt.timeSec = 0
+
+		copy(wpt.waypointDescription[:], w.Name)
+
 		d.tinfo = append(d.tinfo, wpt)
 	}
-	// gpxData.Waypoints[0]
-	// var wpt Waypoint
-	// wpt.coordinateIndex
-	// wpt.directionCode
-	// wpt.distance
-	// wpt.timeSec
-	// wpt.waypointDescription
-
-	// d.tinfo
 
 	fmt.Println("...finished in ", -startTimestamp.Sub(time.Now()))
 	return err
 }
 
+// adjustGeoCoordinates from float to Bryton compliant
 func adjustGeoCoordinates(geo float64) int32 {
 	return int32(geo * 1000000.0)
 }
 
+// Convert gpx waypoint direction markers to Bryton compliant.
+// Currently only GPSies.com markers are supported
 func convertDirectionCode(gpxDirCode string) uint8 {
 
 	brytonDirCode := DirectionCodeGoAhead
@@ -264,22 +271,4 @@ func convertDirectionCode(gpxDirCode string) uint8 {
 	}
 
 	return brytonDirCode
-}
-
-func main() {
-
-	inFile := "60km_v1.gpx"
-
-	// var data BrytonSmy
-	// data.smyFlag = smyInitFlag
-	// data.Export("testout")
-
-	// dataTrack := make(BrytonTrack, 5)
-	// dataTrack.Export("testout.track")
-
-	// dataTinfo := make(BrytonTinfo, 5)
-	// dataTinfo.Export("testout.track")
-
-	var data BrytonData
-	data.ImportGpx(inFile)
 }

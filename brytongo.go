@@ -67,11 +67,16 @@ type BrytonData struct {
 // Export BrytonSmy structure to .smy file
 func (s *BrytonSmy) Export(outFileName string) error {
 
+	var err error
 	var binaryBuffer bytes.Buffer
-	err := binary.Write(&binaryBuffer, binary.BigEndian, s)
 
-	if err != nil {
-		panic(err)
+	layout := []interface{}{int16(0x01), s.coordinateCount, s.bboxLatNe, s.bboxLatSw, s.bboxLonNe, s.bboxLonSw, s.totalDst}
+
+	for _, entry := range layout {
+		err = binary.Write(&binaryBuffer, binary.LittleEndian, entry)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	err = storeToFile(binaryBuffer, adjustFilename(outFileName, ".smy"))
@@ -93,7 +98,7 @@ func (t BrytonTrack) Export(outFileName string) error {
 		layout := []interface{}{trackEntry.lat, trackEntry.lon, uint64(0x00)}
 
 		for _, entry := range layout {
-			err = binary.Write(&binaryBuffer, binary.BigEndian, entry)
+			err = binary.Write(&binaryBuffer, binary.LittleEndian, entry)
 
 			if err != nil {
 				panic(err)
@@ -139,7 +144,7 @@ func (t BrytonTinfo) Export(outFileName string) error {
 			tinfoEntry.timeSec, uint16(0x00), tinfoEntry.waypointDescription}
 
 		for _, entry := range layout {
-			err = binary.Write(&binaryBuffer, binary.BigEndian, entry)
+			err = binary.Write(&binaryBuffer, binary.LittleEndian, entry)
 			if err != nil {
 				return err
 			}
@@ -204,7 +209,10 @@ func (d *BrytonData) ImportGpx(gpxFileName string) error {
 
 	// smy data
 	d.smy.coordinateCount = int16(gpxData.GetTrackPointsNo())
-	d.smy.totalDst = int32(gpxData.Length3D() * 1000.0)
+	fmt.Printf("Coordinate count: %v\n", d.smy.coordinateCount)
+
+	d.smy.totalDst = int32(gpxData.Length3D())
+	fmt.Printf("Total distance %0.2fkm\n", gpxData.Length3D()/1000.0)
 
 	d.smy.bboxLatNe = adjustGeoCoordinates(gpxData.Bounds().MaxLatitude)
 	d.smy.bboxLonNe = adjustGeoCoordinates(gpxData.Bounds().MaxLongitude)
@@ -222,6 +230,8 @@ func (d *BrytonData) ImportGpx(gpxFileName string) error {
 	}
 
 	// tinfo data
+	fmt.Printf("Waypoint count: %v\n", len(gpxData.Waypoints))
+
 	for _, w := range gpxData.Waypoints {
 		var wpt Waypoint
 		wpt.coordinateIndex = d.track.getCoordinateIndex(GeoPoint{adjustGeoCoordinates(w.Point.GetLatitude()), adjustGeoCoordinates(w.Point.GetLongitude())})
